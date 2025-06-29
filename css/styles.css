@@ -1,0 +1,134 @@
+/* Base Colors from prompt */
+:root {
+    --bg-dark-charcoal: #1A202C;
+    --bg-electric-teal: #00C9B8;
+    --bg-light-grey: #F7FAFC;
+    --text-neutral-grey: #A0AEC0;
+    --text-white-mute: #E2E8F0; /* Lighter grey for text */
+    --bg-card-hover: rgba(0, 201, 184, 0.1); /* Subtle teal hover for cards */
+}
+
+body {
+    background-color: var(--bg-dark-charcoal);
+    color: var(--text-white-mute);
+}
+
+/* Utility classes for direct color application if needed */
+.bg-dark-charcoal { background-color: var(--bg-dark-charcoal); }
+.bg-electric-teal { background-color: var(--bg-electric-teal); }
+.bg-light-grey { background-color: var(--bg-light-grey); }
+.text-neutral-grey { color: var(--text-neutral-grey); }
+.text-white-mute { color: var(--text-white-mute); }
+.hover-teal-accent:hover { color: var(--bg-electric-teal); }
+
+/* Card 3D Hover Effect */
+.card-container {
+    perspective: 1000px;
+}
+.card {
+    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    transform-style: preserve-3d;
+    background-color: #2D3748; /* Darker card background */
+    border-radius: 8px; /* Slightly rounded corners */
+}
+.card:hover {
+    transform: rotateY(3deg) rotateX(3deg) translateZ(10px);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+    background-color: #3A4350; /* Slightly lighter on hover */
+}
+.card-body {
+    padding: 1rem;
+}
+.card-image {
+    height: 200px; /* Example height */
+    object-fit: cover;
+    width: 100%;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+.card-title {
+    font-size: 1.125rem; /* text-lg */
+    font-weight: 600;
+    color: var(--bg-electric-teal);
+    margin-bottom: 0.25rem;
+}
+.card-subtitle {
+    font-size: 0.875rem; /* text-sm */
+    color: var(--text-neutral-grey);
+}
+.card-price {
+    font-size: 1.25rem; /* text-xl */
+    font-weight: 700; /* font-bold */
+    color: var(--bg-electric-teal);
+}
+
+/* Modal Fade & Scale Animation */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.8); /* Darker overlay */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    visibility: hidden; /* Initially hidden */
+}
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+.modal-content {
+    background-color: #2D3748; /* Dark card background */
+    border-radius: 0.5rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    transform: scale(0.95);
+    opacity: 0;
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+.modal-overlay.visible .modal-content {
+    transform: scale(1);
+    opacity: 1;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 2rem; /* text-3xl */
+    line-height: 1;
+    color: var(--text-neutral-grey);
+    transition: color 0.2s ease;
+}
+.modal-close-btn:hover {
+    color: var(--bg-electric-teal);
+}
+
+/* Loader Animation */
+.loader {
+    border: 8px solid #333; /* Grey border */
+    border-top: 8px solid #00C9B8; /* Teal top border */
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Custom scrollbars (optional, for better look) */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 8px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #2d3748; /* Darker track */
+    border-radius: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background-color: #00C9B8; /* Teal thumb */
+    border-radius: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background-color: #00a99e; /* Slightly darker teal on hover */
+}
