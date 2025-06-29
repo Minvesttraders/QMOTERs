@@ -1,48 +1,65 @@
 // ---- Utility Functions ----
 
-// Currency Formatter (Example for PKR)
+// Currency Formatter (using Intl.NumberFormat, standard JS feature)
 function formatCurrency(amount) {
     if (typeof amount !== 'number') {
-        return '$0.00'; // Or handle error/default
+        return 'N/A'; // Handle invalid input gracefully
     }
-    return new Intl.NumberFormat('en-PK', {
-        style: 'currency',
-        currency: 'PKR',
-        minimumFractionDigits: 0, // No decimals for typical car prices
-        maximumFractionDigits: 0
-    }).format(amount);
+    try {
+        // Using 'en-PK' locale for PKR, adjust if needed
+        return new Intl.NumberFormat('en-PK', {
+            style: 'currency',
+            currency: 'PKR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    } catch (e) {
+        console.warn("Could not format currency:", e);
+        return `PKR ${amount.toLocaleString()}`; // Fallback formatting
+    }
 }
 
-// Generic function to fetch seller info (used in multiple places)
+// Fetch seller info from Firestore using sellerId
 async function fetchSellerInfo(sellerId) {
-    if (!sellerId) return null;
+    if (!sellerId || !firebaseDb) return null; // Exit if no ID or DB not ready
     try {
-        // Cache seller info to avoid redundant fetches if possible
-        // A simple global cache could work for performance
-        const userDoc = await databases.getDocument(DB_ID, USER_COLLECTION_ID, sellerId);
-        return userDoc;
+        // Fetch user document from Firestore
+        const userDoc = await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(sellerId).get();
+        if (userDoc.exists) {
+            return userDoc.data(); // Return the user data object
+        } else {
+            console.warn(`Seller document not found for ID: ${sellerId}`);
+            return null;
+        }
     } catch (error) {
-        console.warn(`Could not fetch seller info for ${sellerId}:`, error);
+        console.warn(`Error fetching seller info for ${sellerId}:`, error);
         return null;
     }
 }
 
 // Generic function to format date/time if needed
-function formatDateTime(isoString) {
-    if (!isoString) return 'N/A';
+function formatDateTime(isoStringOrTimestamp) {
+    if (!isoStringOrTimestamp) return 'N/A';
     try {
-        return new Date(isoString).toLocaleString();
+        let date;
+        if (isoStringOrTimestamp instanceof firebase.firestore.Timestamp) {
+            // If it's a Firestore Timestamp object
+            date = isoStringOrTimestamp.toDate();
+        } else if (typeof isoStringOrTimestamp === 'string' || typeof isoStringOrTimestamp === 'number') {
+            // If it's a string or number (like Date.now() or ISO string)
+            date = new Date(isoStringOrTimestamp);
+        } else {
+            throw new Error("Invalid date format");
+        }
+        return date.toLocaleString(); // Standard JS formatting
     } catch (error) {
+        console.warn("Could not format date:", error);
         return 'Invalid Date';
     }
 }
 
-// --- Moved Loader and Modal Handling to app.js for core management ---
-// If you want them truly separated, ensure app.js imports them or app.js provides the hooks.
-
 // ---- Text Updates based on Language ----
 function updateUIText(lang) {
-    // Placeholder function to be called by app.js when language changes
     console.log(`Updating UI text for: ${lang}`);
 
     // Example: Update header elements
@@ -64,10 +81,11 @@ function updateUIText(lang) {
     }
 
     // Example: Update Auth Modal Text
-    const authModalTitle = document.querySelector('#auth-modal h2');
+    const authModalTitle = document.querySelector('#auth-modal .modal-content h2'); // More specific selector
      if (authModalTitle) {
         authModalTitle.textContent = lang === 'ur' ? 'خوش آمدید!' : 'Welcome!';
     }
+    // Find login/signup buttons and update text
     const loginBtn = document.querySelector('#login-form button[type="submit"]');
     if (loginBtn) loginBtn.textContent = lang === 'ur' ? 'لاگ ان کریں' : 'Login';
     const signupBtn = document.querySelector('#signup-form button[type="submit"]');
@@ -78,20 +96,12 @@ function updateUIText(lang) {
     if (showLoginText) showLoginText.textContent = lang === 'ur' ? 'لاگ ان کریں' : 'Login';
 
 
-    // Add more text updates for other elements (placeholders, labels, buttons, etc.)
-    // This is where a proper i18n library would be very helpful.
+    // Placeholder for other text updates needed across the application
+    // Add more selectors and text content for different languages here.
 }
 
-// Export functions if using modules
-/*
-export {
-    formatCurrency,
-    fetchSellerInfo,
-    formatDateTime,
-    updateUIText
-};
-*/
+// Export functions if using modules, or make globally accessible
 window.formatCurrency = formatCurrency;
 window.fetchSellerInfo = fetchSellerInfo;
-window.updateUIText = updateUIText;
 window.formatDateTime = formatDateTime;
+window.updateUIText = updateUIText;
