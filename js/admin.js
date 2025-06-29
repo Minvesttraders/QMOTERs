@@ -1,59 +1,66 @@
 // ---- Admin Panel Logic ----
 
-let userSubscription = null; // For admin user updates
-let postSubscriptionForAdmin = null; // For admin post updates
-
-// Cache admin elements
+// Cache admin elements and Firebase references
 let paymentToggle, userTableBody, postTableBody;
+let userListListener = null;
+let postListListener = null;
+
+// Collection names assumed globally or defined here
+// const FIREBASE_USERS_COLLECTION = 'users';
+// const FIREBASE_POSTS_COLLECTION = 'posts';
 
 function initializeAdminModule() {
+    // Cache admin-related DOM elements
     paymentToggle = document.getElementById('payment-toggle');
     userTableBody = document.getElementById('user-table-body');
     postTableBody = document.getElementById('post-table-body');
 
-    // Attach listeners
+    // Attach event listeners
     paymentToggle?.addEventListener('change', handlePaymentToggleChange);
 
-     // Add modal handlers
+    // Attach modal close listeners (if not handled globally)
     const closeAdminModalBtn = document.getElementById('close-admin-modal');
     closeAdminModalBtn?.addEventListener('click', () => hideModal('admin-panel-modal'));
-     const adminModalOverlay = document.getElementById('admin-panel-modal');
-     adminModalOverlay?.addEventListener('click', (event) => {
-         if (event.target === adminModalOverlay) {
-             hideModal('admin-panel-modal');
-         }
-     });
+    const adminModalOverlay = document.getElementById('admin-panel-modal');
+    adminModalOverlay?.addEventListener('click', (event) => {
+        if (event.target === adminModalOverlay) { // Clicked on the backdrop
+            hideModal('admin-panel-modal');
+        }
+    });
 
-     // Set rating modal setup (assuming modal exists and is initialized here)
+    // Initialize the Set Rating Modal
     initializeSetRatingModal();
 }
 
+// Render the admin panel interface
 function renderAdminPanel() {
-    if (!isAdmin) {
-        alert('You are not an administrator.');
-        window.location.hash = '#feed'; // Redirect back
+    if (!isAdmin) { // Check if current user is admin
+        alert('You do not have administrator privileges.');
+        window.location.hash = '#feed'; // Redirect back to feed
         return;
     }
     showModal('admin-panel-modal');
-    loadAdminData();
+    loadAdminData(); // Fetch and display data once modal is shown
 }
 
-// Load initial data for admin panel
+// Load initial data for admin panel (users, posts) and set up listeners
 async function loadAdminData() {
+    if (!firebaseDb) {
+        console.error("Firebase DB not initialized for Admin Panel.");
+        return;
+    }
     showLoader();
     try {
-        // Fetch payment setting (example: stored in a config document or env variable)
-        // For simplicity, let's assume it's not dynamically fetched here, but set initially.
-        // If it were in Appwrite:
-        // const settings = await databases.getDocument(DB_ID, SETTINGS_COLLECTION_ID, 'payment_settings');
-        // paymentToggle.checked = settings.requirePayment;
+        // Fetch payment settings (Assuming it's stored in Firestore)
+        // Example: const settingsDoc = await firebaseDb.collection('settings').doc('payment').get();
+        // if (settingsDoc.exists) paymentToggle.checked = settingsDoc.data().requirePayment;
+        // For simplicity, payment toggle is just a UI element for now.
 
-        fetchUsersForAdmin();
-        fetchPostsForAdmin();
+        fetchUsersForAdmin(); // Load users table
+        fetchPostsForAdmin(); // Load posts table
 
-        // Setup realtime subscriptions for admin panel
-         subscribeToUserUpdates();
-         subscribeToPostUpdatesForAdmin();
+        // Set up Firestore listeners for real-time updates in admin tables
+        setupAdminListeners();
 
     } catch (error) {
         console.error("Error loading admin data:", error);
@@ -65,29 +72,40 @@ async function loadAdminData() {
 
 // Fetch users for the admin table
 async function fetchUsersForAdmin() {
-    if (!userTableBody) return;
+    if (!userTableBody || !firebaseDb) return;
     userTableBody.innerHTML = '<tr><td colspan="5" class="text-center py-4">Loading users...</td></tr>';
     try {
-        const usersResponse = await databases.listDocuments(DB_ID, USER_COLLECTION_ID, [Appwrite.Query.orderAsc('createdAt')]);
+        const usersSnapshot = await firebaseDb.collection(FIREBASE_USERS_COLLECTION)
+            .orderBy('createdAt', 'asc') // Order by creation date
+            .get();
+
         userTableBody.innerHTML = ''; // Clear loading state
 
-        if (usersResponse.total === 0) {
+        if (usersSnapshot.empty) {
             userTableBody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No users found.</td></tr>';
             return;
         }
 
-        usersResponse.documents.forEach(user => {
-            if (user.$id === currentUser.appwriteId) return; // Don't show actions for self
+        usersSnapshot.forEach(userDoc => {
+            const user = userDoc.data();
+            const userId = userDoc.id;
+
+            if (userId === currentUser.uid) return; // Skip current user
 
             const isUserAdmin = user.roles?.includes('admin');
             const isUserMod = user.roles?.includes('moderator');
-            const avatarUrl = user.avatarUrl ? storage.getFilePreview(appwriteConfig.storageBucketId, user.avatarUrl, 40, 40).href : 'https://via.placeholder.com/40?text=U';
+            let avatarUrl = 'https://via.placeholder.com/40?text=U'; // Default avatar
+            if (user.avatarUrl && firebaseStorage) {
+                try {
+                    avatarUrl = firebaseStorage.ref().child(`${'car_images'}/${user.avatarUrl}`).getDownloadURL();
+                } catch (e) { console.warn("Could not get user avatar URL:", e); }
+            }
 
             const row = document.createElement('tr');
-            row.dataset.userId = user.$id;
+            row.dataset.userId = userId;
             row.innerHTML = `
                 <td class="px-4 py-2 flex items-center">
-                    <img src="${avatarUrl}" alt="Avatar" class="w-8 h-8 rounded-full mr-2">
+                    <img src="${avatarUrl}" alt="Avatar" class="w-8 h-8 rounded-full mr-2" onerror="this.onerror=null;this.src='https://via.placeholder.com/40?text=U';" >
                     ${user.displayName || user.showroomName || 'Unknown'}
                 </td>
                 <td class="px-4 py-2">${user.email}</td>
@@ -95,20 +113,20 @@ async function fetchUsersForAdmin() {
                 <td class="px-4 py-2">${user.roles ? user.roles.join(', ') : 'user'}</td>
                 <td class="px-4 py-2 space-x-2">
                     ${isUserAdmin ? '<span class="text-yellow-400 font-bold">Admin</span>' : `
-                        <button class="bg-green-500 hover:bg-green-600 text-white py-1 px-2 rounded text-xs activate-user-btn" data-user-id="${user.$id}" ${user.status === 'active' ? 'disabled' : ''}>Activate</button>
-                        <button class="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs reject-user-btn" data-user-id="${user.$id}">Reject</button>
-                        <button class="bg-purple-500 hover:bg-purple-600 text-white py-1 px-2 rounded text-xs promote-mod-btn" data-user-id="${user.$id}" ${isUserMod ? 'disabled' : ''}>Promote Mod</button>
-                        <button class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-xs set-rating-btn" data-user-id="${user.$id}">Set Rating</button>
+                        <button class="bg-green-500 hover:bg-green-600 text-white py-1 px-2 rounded text-xs activate-user-btn" data-user-id="${userId}" ${user.status === 'active' ? 'disabled' : ''}>Activate</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs reject-user-btn" data-user-id="${userId}" ${user.status === 'rejected' ? 'disabled' : ''}>Reject</button>
+                        <button class="bg-purple-500 hover:bg-purple-600 text-white py-1 px-2 rounded text-xs promote-mod-btn" data-user-id="${userId}" ${isUserMod ? 'disabled' : ''}>Promote Mod</button>
+                        <button class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-xs set-rating-btn" data-user-id="${userId}">Set Rating</button>
                     `}
                  </td>
             `;
 
-            // Add event listeners for actions (only if not admin)
-            if (!isUserAdmin) {
-                row.querySelector('.activate-user-btn').addEventListener('click', () => updateUserStatus(user.$id, 'active'));
-                row.querySelector('.reject-user-btn').addEventListener('click', () => updateUserStatus(user.$id, 'rejected'));
-                row.querySelector('.promote-mod-btn').addEventListener('click', () => promoteUser(user.$id, 'moderator'));
-                row.querySelector('.set-rating-btn').addEventListener('click', () => showSetRatingModal(user.$id));
+            // Add event listeners for actions
+            if (!isUserAdmin) { // Only attach if current user isn't admin and this row isn't for admin
+                row.querySelector('.activate-user-btn').addEventListener('click', () => updateUserStatus(userId, 'active'));
+                row.querySelector('.reject-user-btn').addEventListener('click', () => updateUserStatus(userId, 'rejected'));
+                row.querySelector('.promote-mod-btn').addEventListener('click', () => promoteUser(userId, 'moderator'));
+                row.querySelector('.set-rating-btn').addEventListener('click', () => showSetRatingModal(userId));
             }
             userTableBody.appendChild(row);
         });
@@ -121,24 +139,28 @@ async function fetchUsersForAdmin() {
 
 // Fetch posts for admin review table
 async function fetchPostsForAdmin() {
-    if (!postTableBody) return;
+    if (!postTableBody || !firebaseDb) return;
     postTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Loading posts...</td></tr>';
     try {
-        const postsResponse = await databases.listDocuments(DB_ID, POST_COLLECTION_ID, [Appwrite.Query.orderAsc('createdAt')]);
+        const postsSnapshot = await firebaseDb.collection(FIREBASE_POSTS_COLLECTION)
+            .orderBy('createdAt', 'desc') // Order by creation time
+            .get();
+
         postTableBody.innerHTML = ''; // Clear loading state
 
-        if (postsResponse.total === 0) {
+        if (postsSnapshot.empty) {
             postTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4">No posts found.</td></tr>';
             return;
         }
 
-        // Use a cache for seller names to avoid repeated fetches
+        // Cache seller names to avoid redundant fetches
         const sellerNameCache = {};
         async function getSellerName(sellerId) {
             if (sellerNameCache[sellerId]) return sellerNameCache[sellerId];
+            if (!sellerId) return 'Unknown Seller';
             try {
-                const userDoc = await databases.getDocument(DB_ID, USER_COLLECTION_ID, sellerId);
-                const name = userDoc.displayName || userDoc.showroomName || 'Unknown Seller';
+                const userDoc = await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(sellerId).get();
+                const name = userDoc.data()?.displayName || userDoc.data()?.showroomName || 'Unknown Seller';
                 sellerNameCache[sellerId] = name;
                 return name;
             } catch (error) {
@@ -148,46 +170,55 @@ async function fetchPostsForAdmin() {
             }
         }
 
-        for (const post of postsResponse.documents) {
+        const rows = []; // Store rows to append later for efficiency
+        for (const doc of postsSnapshot.docs) {
+            const post = { id: doc.id, ...doc.data() };
             const sellerName = await getSellerName(post.sellerId);
             const row = document.createElement('tr');
-            row.dataset.postId = post.$id;
+            row.dataset.postId = post.id;
             row.innerHTML = `
                 <td class="px-4 py-2">${post.name || 'Unnamed'} (${post.model || 'N/A'})</td>
                 <td class="px-4 py-2">${sellerName}</td>
                 <td class="px-4 py-2">${post.approvalStatus || 'pending'}</td>
                 <td class="px-4 py-2 space-x-2">
-                    <button class="bg-green-500 hover:bg-green-600 text-white py-1 px-2 rounded text-xs approve-post-btn" data-post-id="${post.$id}" ${post.approvalStatus === 'approved' ? 'disabled' : ''}>Approve</button>
-                    <button class="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs reject-post-btn" data-post-id="${post.$id}" ${post.approvalStatus === 'rejected' ? 'disabled' : ''}>Reject</button>
-                    <button class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-2 rounded text-xs view-post-btn" data-post-id="${post.$id}">View</button>
+                    <button class="bg-green-500 hover:bg-green-600 text-white py-1 px-2 rounded text-xs approve-post-btn" data-post-id="${post.id}" ${post.approvalStatus === 'approved' ? 'disabled' : ''}>Approve</button>
+                    <button class="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs reject-post-btn" data-post-id="${post.id}" ${post.approvalStatus === 'rejected' ? 'disabled' : ''}>Reject</button>
+                    <button class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-2 rounded text-xs view-post-btn" data-post-id="${post.id}">View</button>
                 </td>
             `;
-            row.querySelector('.approve-post-btn').addEventListener('click', () => updatePostStatus(post.$id, 'approved'));
-            row.querySelector('.reject-post-btn').addEventListener('click', () => updatePostStatus(post.$id, 'rejected'));
-            row.querySelector('.view-post-btn').addEventListener('click', () => {
-                // Fetch post details including seller again for showCarDetails, or pass it here if available
-                // For now, re-fetch the post doc if needed by showCarDetails
-                databases.getDocument(DB_ID, POST_COLLECTION_ID, post.$id).then(fullPost => {
-                    fetchSellerInfo(post.$id).then(seller => showCarDetails(fullPost, seller));
-                });
+            // Add event listeners
+            row.querySelector('.approve-post-btn').addEventListener('click', () => updatePostStatus(post.id, 'approved'));
+            row.querySelector('.reject-post-btn').addEventListener('click', () => updatePostStatus(post.id, 'rejected'));
+            row.querySelector('.view-post-btn').addEventListener('click', async () => {
+                // Need to fetch seller info again if not bundled
+                 let sellerInfo = null;
+                if (post.sellerId) {
+                    const sellerDoc = await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(post.sellerId).get();
+                    sellerInfo = sellerDoc.exists ? sellerDoc.data() : null;
+                 }
+                 showCarDetails(post, sellerInfo); // Reuse from feed.js
             });
-            postTableBody.appendChild(row);
+            rows.push(row);
         }
+        // Append all rows at once for better performance
+        rows.forEach(row => postTableBody.appendChild(row));
+
     } catch (error) {
         console.error("Error fetching posts for admin:", error);
         postTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Failed to load posts.</td></tr>';
     }
 }
 
-
 // ---- Admin Actions ----
 
+// Update user status (active, rejected, etc.)
 async function updateUserStatus(userId, newStatus) {
     showLoader();
     try {
-        await databases.updateDocument(DB_ID, USER_COLLECTION_ID, userId, { status: newStatus });
+        await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(userId).update({ status: newStatus });
         alert(`User status updated to ${newStatus}.`);
-        fetchUsersForAdmin(); // Refresh table
+        // Real-time listener will refresh the table, or manually refresh
+        fetchUsersForAdmin();
     } catch (error) {
         console.error(`Error updating user status to ${newStatus} for ${userId}:`, error);
         alert(`Failed to update status: ${error.message}`);
@@ -196,13 +227,14 @@ async function updateUserStatus(userId, newStatus) {
     }
 }
 
+// Update post status (approved, rejected, pending)
 async function updatePostStatus(postId, newStatus) {
     showLoader();
     try {
-        await databases.updateDocument(DB_ID, POST_COLLECTION_ID, postId, { approvalStatus: newStatus });
+        await firebaseDb.collection(FIREBASE_POSTS_COLLECTION).doc(postId).update({ approvalStatus: newStatus });
         alert(`Post status updated to ${newStatus}.`);
-        fetchPostsForAdmin(); // Refresh table
-        // Potentially trigger a realtime update if subscribed
+        // Real-time listener will refresh the table, or manually refresh
+        fetchPostsForAdmin();
     } catch (error) {
         console.error(`Error updating post status to ${newStatus} for ${postId}:`, error);
         alert(`Failed to update status: ${error.message}`);
@@ -211,19 +243,24 @@ async function updatePostStatus(postId, newStatus) {
     }
 }
 
+// Promote user to moderator role
 async function promoteUser(userId, role) {
     showLoader();
     try {
-        const userDoc = await databases.getDocument(DB_ID, USER_COLLECTION_ID, userId);
-        let currentRoles = userDoc.roles || [];
+        const userDocRef = firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(userId);
+        const userDoc = await userDocRef.get();
+        let currentRoles = userDoc.data()?.roles || [];
+
         if (currentRoles.includes(role)) {
-            alert('User already has this role.');
+            alert(`User already has the '${role}' role.`);
             hideLoader(); return;
         }
-        const updatedRoles = [...currentRoles, role];
-        await databases.updateDocument(DB_ID, USER_COLLECTION_ID, userId, { roles: updatedRoles });
+        // Add the new role using FieldValue.arrayUnion
+        await userDocRef.update({
+            roles: firebase.firestore.FieldValue.arrayUnion(role)
+        });
         alert(`User promoted to ${role}.`);
-        fetchUsersForAdmin(); // Refresh table
+        fetchUsersForAdmin(); // Refresh the table
     } catch (error) {
         console.error(`Error promoting user ${userId} to ${role}:`, error);
         alert(`Failed to promote user: ${error.message}`);
@@ -232,58 +269,63 @@ async function promoteUser(userId, role) {
     }
 }
 
-function initializeSetRatingModal() {
-     // Cache elements for the set rating modal
-    const setRatingModal = document.getElementById('set-rating-modal'); // Assuming modal exists
-    if (!setRatingModal) return;
+// ---- Set Rating Modal Logic ----
+let ratingForm, modalUserIdInput, userRatingInput;
 
-    const ratingForm = document.getElementById('set-rating-form');
-    const modalUserIdInput = document.getElementById('modal-user-id'); // Hidden input to store user ID
-    const userRatingInput = document.getElementById('user-rating-input');
+function initializeSetRatingModal() {
+    // Cache elements for the set rating modal
+    const setRatingModal = document.getElementById('set-rating-modal');
+    if (!setRatingModal) return; // Exit if modal doesn't exist
+
+    ratingForm = document.getElementById('set-rating-form');
+    modalUserIdInput = document.getElementById('modal-user-id');
+    userRatingInput = document.getElementById('user-rating-input');
     const closeRatingModalBtn = document.getElementById('close-rating-modal');
 
-    // Add handlers
-     ratingForm?.addEventListener('submit', handleSetRatingSubmit);
-     closeRatingModalBtn?.addEventListener('click', () => hideModal('set-rating-modal'));
-     // Click outside handler
-     const ratingModalOverlay = document.getElementById('set-rating-modal');
-     ratingModalOverlay?.addEventListener('click', (event) => {
-         if (event.target === ratingModalOverlay) {
-             hideModal('set-rating-modal');
-         }
-     });
+    // Add event listeners
+    ratingForm?.addEventListener('submit', handleSetRatingSubmit);
+    closeRatingModalBtn?.addEventListener('click', () => hideModal('set-rating-modal'));
+
+    // Click outside handler
+    const ratingModalOverlay = document.getElementById('set-rating-modal');
+    ratingModalOverlay?.addEventListener('click', (event) => {
+        if (event.target === ratingModalOverlay) {
+            hideModal('set-rating-modal');
+        }
+    });
 }
 
+// Shows the modal to set rating for a specific user
 async function showSetRatingModal(userId) {
-    const setRatingModal = document.getElementById('set-rating-modal');
-    if (!setRatingModal) return;
-
-    // Set the user ID for the form
-    const modalUserIdInput = document.getElementById('modal-user-id');
+    if (!firebaseDb || !userId) {
+        console.error("Firebase DB or User ID missing for set rating.");
+        return;
+    }
+    showModal('set-rating-modal');
+    // Set the user ID in a hidden input field within the modal
     if (modalUserIdInput) modalUserIdInput.value = userId;
 
-    // Optional: Fetch current rating and pre-fill input
+    // Fetch current rating and pre-fill the input
     try {
-        const userDoc = await databases.getDocument(DB_ID, USER_COLLECTION_ID, userId);
-        const userRatingInput = document.getElementById('user-rating-input');
+        const userDoc = await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(userId).get();
         if (userRatingInput) {
-            userRatingInput.value = userDoc.rating !== undefined ? userDoc.rating : '';
+            userRatingInput.value = userDoc.data()?.rating !== undefined ? userDoc.data().rating : '';
         }
     } catch (error) {
         console.warn(`Could not fetch current rating for user ${userId}:`, error);
+        if (userRatingInput) userRatingInput.value = ''; // Clear if fetch fails
     }
-
-    showModal('set-rating-modal');
 }
 
+// Handles the submission of the set rating form
 async function handleSetRatingSubmit(event) {
     event.preventDefault();
-    const setRatingModal = document.getElementById('set-rating-modal');
-    if (!setRatingModal) return;
+    if (!ratingForm || !modalUserIdInput || !userRatingInput || !firebaseDb) return;
 
-    const userId = document.getElementById('modal-user-id')?.value;
-    const ratingValue = parseFloat(document.getElementById('user-rating-input')?.value);
+    const userId = modalUserIdInput.value;
+    const ratingValue = parseFloat(userRatingInput.value);
 
+    // Validate rating input
     if (!userId || isNaN(ratingValue) || ratingValue < 1 || ratingValue > 5) {
         alert('Please enter a valid rating between 1 and 5.');
         return;
@@ -291,10 +333,11 @@ async function handleSetRatingSubmit(event) {
 
     showLoader();
     try {
-        await databases.updateDocument(DB_ID, USER_COLLECTION_ID, userId, { rating: ratingValue });
+        // Update user's rating in Firestore
+        await firebaseDb.collection(FIREBASE_USERS_COLLECTION).doc(userId).update({ rating: ratingValue });
         alert('Rating updated successfully.');
-        hideModal('set-rating-modal');
-        fetchUsersForAdmin(); // Refresh user table
+        hideModal('set-rating-modal'); // Close the modal
+        fetchUsersForAdmin(); // Refresh the user table to show updated rating (or potentially just update the specific row)
     } catch (error) {
         console.error(`Error setting rating for user ${userId}:`, error);
         alert(`Failed to set rating: ${error.message}`);
@@ -303,39 +346,61 @@ async function handleSetRatingSubmit(event) {
     }
 }
 
-
+// Handles the payment toggle change (simulated action)
 function handlePaymentToggleChange() {
-    // Update the setting in Appwrite (e.g., in a settings collection)
     const isPaymentEnabled = paymentToggle.checked;
     console.log('Payment requirement changed to:', isPaymentEnabled);
     alert('Payment setting updated (simulation).');
-    // Implement actual Appwrite update here
+    // TODO: Implement actual Firebase Firestore update for payment settings if stored there.
+    // Example:
+    // try {
+    //     await firebaseDb.collection('settings').doc('payment').update({ requirePayment: isPaymentEnabled });
+    //     alert('Payment setting updated successfully.');
+    // } catch (error) { ... }
 }
 
-// ---- Realtime Subscriptions for Admin ----
-function subscribeToUserUpdates() {
-     if (userSubscription) userSubscription.unsubscribe();
-     userSubscription = realtime.subscribe(`collections.${USER_COLLECTION_ID}.documents`, (event) => {
-        // When user data changes (status, roles, rating), update the admin table
-        // Need to check if the changed user affects the current admin view
-        fetchUsersForAdmin(); // Simple refresh strategy
+// ---- Real-time Listeners for Admin Panel ----
+function setupAdminListeners() {
+    // Setup listener for user changes (status, roles, etc.)
+    if (userListListener) userListListener(); // Unsubscribe previous if exists
+    userListListener = firebaseDb.collection(FIREBASE_USERS_COLLECTION).onSnapshot((snapshot) => {
+        console.log("User snapshot received. Refreshing user table.");
+        fetchUsersForAdmin(); // Refresh user table on changes
+    }, (error) => {
+        console.error("Error listening to users collection:", error);
+        // Handle error, maybe show a message in the table area
+    });
+
+    // Setup listener for post changes (approval status, etc.)
+    if (postListListener) postListListener(); // Unsubscribe previous if exists
+    postListListener = firebaseDb.collection(FIREBASE_POSTS_COLLECTION).onSnapshot((snapshot) => {
+        console.log("Post snapshot received. Refreshing post table.");
+        fetchPostsForAdmin(); // Refresh post table on changes
+    }, (error) => {
+        console.error("Error listening to posts collection:", error);
+        // Handle error
     });
 }
 
-function subscribeToPostUpdatesForAdmin() {
-     if (postSubscriptionForAdmin) postSubscriptionForAdmin.unsubscribe();
-     postSubscriptionForAdmin = realtime.subscribe(`collections.${POST_COLLECTION_ID}.documents`, (event) => {
-        // When post data changes (approvalStatus), update the admin table
-        fetchPostsForAdmin(); // Simple refresh strategy
-    });
+// Cleanup listeners when modal is closed (important to prevent memory leaks)
+function cleanupAdminListeners() {
+    if (userListListener) {
+        userListListener(); // Unsubscribe
+        userListListener = null;
+    }
+    if (postListListener) {
+        postListListener(); // Unsubscribe
+        postListListener = null;
+    }
 }
 
-// ---- Initialize Admin Module ----
+// ---- Module Initialization ----
 document.addEventListener('DOMContentLoaded', () => {
      initializeAdminModule();
+     // Listeners are set up when loadAdminData is called after modal is shown.
 });
 
-// ---- Export Functions ----
-// export { renderAdminPanel };
+// ---- Export/Make Functions Accessible ----
 window.renderAdminPanel = renderAdminPanel;
-window.initializeSetRatingModal = initializeSetRatingModal; // Export initialization too
+window.initializeSetRatingModal = initializeSetRatingModal;
+window.cleanupAdminListeners = cleanupAdminListeners; // Crucial for closing modals
