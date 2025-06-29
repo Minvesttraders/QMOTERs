@@ -4,57 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quetta Cars – The Ultimate Dealer Network</title>
-    <!-- Tailwind CSS (can be included via CDN here or in styles.css if using PurgeCSS etc.) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
     <!-- Custom Styles -->
     <link rel="stylesheet" href="css/styles.css">
-    <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
-<!-- Agar Analytics Use Karen Toh -->
-<!-- <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script> -->
-    
 </head>
 <body class="bg-dark-charcoal text-white-mute font-sans antialiased">
 
-    <!-- Appwrite Configuration and Initialization -->
+    <!-- Firebase SDKs -->
+    <!-- Bahut Ahim Ye Modules Firebase Services Ke Liye Hain -->
+    <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js"></script> <!-- Authentication ke liye -->
+    <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js"></script> <!-- Database ke liye -->
+    <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js"></script> <!-- Storage ke liye -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js"></script> --> <!-- Agar Analytics Use Karen Toh -->
+
+    <!-- Main App Initialization Script -->
     <script src="js/app.js"></script>
 
-    <!-- Header (Partially managed by JS for dynamic content) -->
+    <!-- Header -->
     <header id="app-header" class="bg-gray-800 p-4 shadow-md sticky top-0 z-50">
         <!-- Header content will be dynamically loaded/updated by JS -->
     </header>
 
     <!-- Main Content Area -->
     <main id="main-content" class="container mx-auto p-4 py-8">
-        <!-- Content for different pages (Feed, Profile, etc.) will be loaded here -->
         <div id="loader-overlay" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
             <div class="loader ease-linear rounded-full border-8 border-t-electric-teal h-20 w-20"></div>
         </div>
         <div id="app-content">
             <!-- Page-specific content goes here -->
-             <p class="text-center text-neutral-grey col-span-full">Loading application...</p>
+            <p class="text-center text-neutral-grey col-span-full">Loading application...</p>
         </div>
-         <div id="empty-state" class="hidden text-center text-neutral-grey py-16">
+        <div id="empty-state" class="hidden text-center text-neutral-grey py-16">
             No items found.
         </div>
     </main>
 
-    <!-- Modals (can be conditionally shown/hidden by JS) -->
-    <!-- Modals will be included in respective JS files or loaded dynamically -->
+    <!-- Modals will be loaded or managed by JS -->
+    <!-- Example Placeholder for Modals in HTML (They will be shown/hidden via JS) -->
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="modal-overlay hidden">...</div>
+    <!-- Post Car Modal -->
+    <div id="post-car-modal" class="modal-overlay hidden">...</div>
+    <!-- ... etc. -->
 
-    <!-- Footer (Optional) -->
+    <!-- Footer -->
     <footer class="text-center p-4 mt-8 text-neutral-grey text-sm">
         © 2023 Quetta Cars. All rights reserved.
     </footer>
 
     <!-- Scripts for individual pages/features -->
-    <!-- These might be loaded conditionally by app.js or bundled -->
-    <script src="js/utils.js"></script> <!-- Utilities first -->
+    <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/feed.js"></script>
     <script src="js/posting.js"></script>
@@ -62,31 +65,36 @@
     <script src="js/chat.js"></script>
     <script src="js/admin.js"></script>
 
-    <!-- Initial App Setup Script -->
-    <script>
-        // This script runs after all other scripts are loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            initializeApp(); // Function defined in app.js
-        });
-    </script>
+    <!-- **** YE APKA SECRET SCRIPT HAI **** -->
+    <!-- ISKO SAB SE LAST MAIN RAKHEN KEHR SabKuch Load Ho Jaye -->
     <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
+        // Import Firebase initialization functions if they are not globally available via CDN script tags
+        // For CDN usage with Namespaced SDK (like v8), direct global access is common.
+        // If using modular v9+ CDN:
+        // import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+        // import { getAuth } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+        // import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+        // import { getStorage } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyAeIpxacjWnF2EtxbTrwEppCSv_EakiNps",
-    authDomain: "quettamoters.firebaseapp.com",
-    projectId: "quettamoters",
-    storageBucket: "quettamoters.firebasestorage.app",
-    messagingSenderId: "1053883160547",
-    appId: "1:1053883160547:web:d07e4e3c14e91d43ff32d6"
-  };
+        // ---- Your Provided Firebase Configuration ----
+        const firebaseConfig = {
+          apiKey: "AIzaSyAeIpxacjWnF2EtxbTrwEppCSv_EakiNps", // Ye Key Bahut Secret Hoti Hai, Sirf Idhar Use Karen
+          authDomain: "quettamoters.firebaseapp.com",
+          projectId: "quettamoters",
+          storageBucket: "quettamoters.firebasestorage.app",
+          messagingSenderId: "1053883160547",
+          appId: "1:1053883160547:web:d07e4e3c14e91d43ff32d6"
+        };
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
+        // Initialize Firebase App HERE IF NOT DONE GLOBALLY IN app.js
+        // NOTE: agar app.js mein `initializeApp(firebaseConfig)` use kar rahe hain tou yahan dobara karne ki zaroorat nahi.
+        // Yeh script sirf dikhane ke liye hai ke config kahan ata hai. Hum app.js mein define karen ge.
+
+        // Make sure DOMContentLoaded is used for final init call
+        // document.addEventListener('DOMContentLoaded', () => {
+        //     initializeApp(); // Call the main init function defined in app.js
+        // });
     </script>
+    <!-- End of Module Script -->
 </body>
 </html>
