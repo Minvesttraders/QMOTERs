@@ -63,7 +63,6 @@ function initializeFirebaseApp() {
 
 // ---- User Session Management (Firebase Adapted) ----
 function fetchCurrentUser() {
-    // Return a Promise because onAuthStateChanged is asynchronous
     return new Promise((resolve, reject) => {
         // Listen for authentication state changes using Firebase Auth
         firebaseAuth.onAuthStateChanged(async (user) => {
@@ -102,7 +101,6 @@ function fetchCurrentUser() {
                     } else {
                         // Handle case: User authenticated but profile not found in Firestore
                         console.error("Firestore user document not found for UID:", user.uid);
-                        // Potentially auto-create a default user profile here or show an error
                         alert("User profile missing. Please contact support.");
                         reject(new Error("User profile missing."));
                     }
@@ -122,11 +120,6 @@ function fetchCurrentUser() {
                 if (profileIcon) profileIcon.classList.add('hidden');
                 if (postCarBtn) postCarBtn.classList.add('hidden');
                 if (adminPanelLink) adminPanelLink.classList.add('hidden');
-
-                // Optionally show the authentication modal if on the feed page
-                // if (!authModal && (window.location.hash === '' || window.location.hash === '#feed')) {
-                //     showModal('auth-modal');
-                // }
 
                 resolve(null); // Resolve the promise with null user
             }
@@ -165,127 +158,226 @@ async function logoutUser() {
     }
 }
 
+// ---- DOM Caching and Event Listeners Setup ----
+function cacheDOMElements() {
+    // Header Elements
+    appHeader = document.getElementById('app-header');
+    postCarBtn = document.getElementById('post-car-btn');
+    searchInput = document.getElementById('search-input');
+    const searchInputMobile = document.getElementById('search-input-mobile'); // Cache mobile too
+    profileIcon = document.getElementById('profile-icon');
+    userMenu = document.getElementById('user-menu');
+    logoutBtn = document.getElementById('logout-btn');
+    langToggleBtn = document.getElementById('lang-toggle-btn');
+    usernameDisplay = document.getElementById('username-display');
+    adminPanelLink = document.getElementById('admin-panel-link');
 
-// ---- Main Application Logic ----
-function initializeApp() {
-    console.log("Initializing application...");
+    // Main Content Areas
+    mainContent = document.getElementById('main-content');
+    appContentContainer = document.getElementById('app-content');
+    loaderOverlay = document.getElementById('loader-overlay');
+    emptyState = document.getElementById('empty-state');
 
-    // 1. Initialize Firebase FIRST
-    const firebaseInitialized = initializeFirebaseApp();
-    if (!firebaseInitialized) {
-        // If Firebase failed to initialize, display an error and stop
-        appContentContainer.innerHTML = '<p class="text-center text-red-500 col-span-full">Application initialization failed. Cannot connect to backend.</p>';
-        return;
-    }
+    // Modals (Get references)
+    authModal = document.getElementById('auth-modal');
+    postCarModal = document.getElementById('post-car-modal');
+    carDetailModal = document.getElementById('car-detail-modal');
+    chatModal = document.getElementById('chat-modal');
+    adminPanelModal = document.getElementById('admin-panel-modal');
 
-    // 2. Cache DOM Elements
-    cacheDOMElements(); // Cache elements like header, modals, buttons etc.
+    // Forms within modals
+    loginForm = document.getElementById('login-form');
+    signupForm = document.getElementById('signup-form');
 
-    // 3. Restore Language Preference
-    const savedLang = localStorage.getItem('appLanguage') || 'en';
-    setLanguage(savedLang);
+    // --- Attach Event Listeners Managed by App.js ---
+    // Header Button Listeners
+    postCarBtn?.addEventListener('click', handlePostCarClick); // Handled in posting.js, called from here
+    searchInput?.addEventListener('input', handleSearch);
+    if(searchInputMobile) searchInputMobile.addEventListener('input', handleSearch);
+    profileIcon?.addEventListener('click', toggleUserMenu);
+    logoutBtn?.addEventListener('click', handleLogout);
+    langToggleBtn?.addEventListener('click', toggleLanguageOptions);
+    adminPanelLink?.addEventListener('click', handleAdminPanelClick);
 
-    // 4. Check Current User Session using Firebase Auth
-    fetchCurrentUser().then((user) => {
-        // This promise resolves once auth state is known and user data (if logged in) is fetched
+    // Auth Modal View Switching
+    document.getElementById('show-signup-btn')?.addEventListener('click', () => switchAuthView(true));
+    document.getElementById('show-login-btn')?.addEventListener('click', () => switchAuthView(false));
+    loginForm?.addEventListener('submit', handleLoginSubmit);
+    signupForm?.addEventListener('submit', handleSignupSubmit);
 
-        // 5. Render Initial View (Feed, Login Prompt etc.)
-        renderCurrentView(); // Load content based on auth state and URL hash
+    // Profile Menu Toggling
+    document.getElementById('view-profile-link')?.addEventListener('click', handleViewProfileClick);
 
-        // 6. Subscribe to Real-time Updates (Posts, Chats etc.)
-        // This needs adaptation in feed.js, chat.js etc. to use Firebase listeners
-        subscribeToAppState();
-
-    }).catch(error => {
-        console.error("Error during initial app load:", error);
-        // Render feed as guest if login/initialization fails unexpectedly
-        renderFeed(); // Display public feed
-        // Optionally show login modal here if user is not logged in and init failed
-    }).finally(() => {
-        // Always hide the loader once initialization attempts are complete
-        hideLoader();
+    // Modal Closing Listeners (General)
+    document.querySelectorAll('.modal-close-btn').forEach(btn => {
+        btn.addEventListener('click', (event) => {
+            const modalOverlay = event.target.closest('.modal-overlay');
+            if (modalOverlay) hideModal(modalOverlay.id);
+        });
+    });
+    // Close modal when clicking outside the content
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) { // Clicked directly on the overlay background
+                hideModal(modal.id);
+            }
+        });
     });
 }
 
-// ---- Adapt Navigation and State Subscriptions ----
+// ---- Utility Functions (Moved core ones here) ----
+function showLoader() { loaderOverlay?.classList.remove('hidden'); }
+function hideLoader() { loaderOverlay?.classList.add('hidden'); }
 
-// Navigates to the correct view based on URL hash (#feed, #profile/userId, #admin etc.)
-function renderCurrentView() {
-    const hash = window.location.hash || '#feed'; // Default to feed
-    // Remove '#' prefix and split if there are parameters (e.g., #profile/userId)
-    const route = hash.substring(1).split('/')[0];
-    const routeParams = hash.substring(1).split('/')[1]; // e.g., userId
-
-    // Show loader while changing view content
-    if (appContentContainer) appContentContainer.innerHTML = '<p class="text-center text-neutral-grey col-span-full">Loading content...</p>';
-
-    switch (route) {
-        case 'feed':
-            if (typeof initializeFeedView === 'function') initializeFeedView();
-            break;
-        case 'profile':
-            const userId = routeParams || (currentUser ? currentUser.uid : null); // Use route param or current user's ID
-            if (userId) {
-                if (typeof renderUserProfile === 'function') renderUserProfile(userId);
-            } else {
-                alert('Please log in or specify a user profile.');
-                window.location.hash = '#feed'; // Redirect back
-            }
-            break;
-        case 'chat':
-            if (typeof renderChat === 'function') renderChat();
-            break;
-        case 'admin':
-            if (isAdmin) {
-                if (typeof renderAdminPanel === 'function') renderAdminPanel();
-            } else {
-                alert('You do not have administrator privileges.');
-                window.location.hash = '#feed'; // Redirect back
-            }
-            break;
-        default:
-            // Default case: show feed
-            if (typeof initializeFeedView === 'function') initializeFeedView();
+function showModal(modalId) {
+    const modalOverlay = document.getElementById(modalId);
+    if (!modalOverlay) return;
+    modalOverlay.classList.add('visible');
+    const modalContent = modalOverlay.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.style.opacity = '1';
+        modalContent.style.transform = 'scale(1)';
     }
 }
 
-// Listen for hash changes to handle routing without page reload
-window.addEventListener('hashchange', renderCurrentView);
+function hideModal(modalId) {
+    const modalOverlay = document.getElementById(modalId);
+    if (!modalOverlay) return;
+    const modalContent = modalOverlay.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.style.opacity = '0';
+        modalContent.style.transform = 'scale(0.95)';
+        // Reset styles after transition for next open
+        setTimeout(() => {
+            modalOverlay.classList.remove('visible');
+            modalContent.style.opacity = '';
+            modalContent.style.transform = '';
+        }, 300); // Match CSS transition duration
+    } else {
+        modalOverlay.classList.remove('visible');
+    }
+}
 
-// Subscribe to Firebase real-time listeners (needs implementation in specific modules)
+// --- Firebase Specific Utilities ---
+function initializeFirebaseApp() { /* See above */ }
+function fetchCurrentUser() { /* See above */ }
+function logoutUser() { /* See above */ }
+function isAdmin() { return isAdmin; } // Getter function
+
+// Function to set/display language
+function displayLanguage(lang) {
+    activeLang = lang;
+    const langTextElement = document.getElementById('lang-text'); // Assumes header has <span id="lang-text">EN</span>
+    if (langTextElement) langTextElement.textContent = lang.toUpperCase();
+
+    // Trigger UI text updates in other modules
+    if (typeof updateUIText === 'function') {
+        updateUIText(lang);
+    }
+    console.log(`Language set to: ${lang}`);
+}
+
+function setLanguage(lang) {
+    displayLanguage(lang);
+    localStorage.setItem('appLanguage', lang); // Save preference
+}
+
+// Navigation and View Management
+function renderCurrentView() { /* See above */ }
+function handlePostCarClick() { /* Forward to posting.js */
+    if (typeof openPostCarModal === 'function') openPostCarModal();
+}
+function handleSearch() { /* Forward to feed.js */
+    const searchTerm = (searchInput?.value || searchInputMobile?.value || '').trim().toLowerCase();
+    if (typeof renderFeed === 'function') renderFeed(searchTerm);
+}
+function toggleUserMenu() { /* Toggles the visibility of the user menu */
+    userMenu.classList.toggle('hidden');
+}
+function handleLogout() { /* Uses logoutUser */
+    logoutUser();
+}
+function toggleLanguageOptions() { /* Function to show/hide language options menu */
+    console.log("Toggle language options UI needed.");
+    // Implement logic to show a language selection dropdown/modal
+}
+function handleAdminPanelClick() { /* Navigates to admin panel if admin */
+    if (isAdmin) {
+        window.location.hash = '#admin';
+    } else {
+        alert('You do not have administrator privileges.');
+    }
+}
+function switchAuthView(showSignup) { /* Manages login/signup form switching */
+    const loginFormContainer = document.getElementById('login-form');
+    const signupFormContainer = document.getElementById('signup-form-container');
+    if (showSignup) {
+        signupFormContainer?.classList.remove('hidden');
+        loginFormContainer?.classList.add('hidden');
+    } else {
+        signupFormContainer?.classList.add('hidden');
+        loginFormContainer?.classList.remove('hidden');
+    }
+}
+function handleLoginSubmit(event) { /* Forwards login submit to auth.js */
+    event.preventDefault();
+    const email = loginForm.elements['login-email'].value;
+    const password = loginForm.elements['login-password'].value;
+    if (typeof loginUser === 'function') loginUser(email, password);
+}
+function handleSignupSubmit(event) { /* Forwards signup submit to auth.js */
+    event.preventDefault();
+    const name = signupForm.elements['signup-name'].value;
+    const email = signupForm.elements['signup-email'].value;
+    const password = signupForm.elements['signup-password'].value;
+    if (typeof signupUser === 'function') signupUser(name, email, password);
+}
+function handleViewProfileClick() { /* Navigates to user's profile */
+    if (!currentUser) {
+        alert('Please log in to view your profile.');
+        showModal('auth-modal');
+        return;
+    }
+    window.location.hash = `#profile/${currentUser.uid}`; // Use currentUser's UID
+    userMenu.classList.add('hidden'); // Close menu
+}
+
+// ---- Subscribe to State Changes (Needs Firebase Adaptaion in Modules) ----
 function subscribeToAppState() {
     console.log("Subscribing to Firebase real-time updates...");
 
-    // Subscribe to posts for real-time feed updates (using Firestore listeners)
-    // The actual listener setup will be in feed.js
+    // Subscribe to posts feed updates using Firestore listener (implemented in feed.js)
     if (typeof subscribeToPostsFeed === 'function') {
         subscribeToPostsFeed();
     }
 
-    // Subscribe to chat updates (using Firestore listeners)
-    // The actual listener setup will be in chat.js
+    // Subscribe to chat updates using Firestore listener (implemented in chat.js)
     if (currentUser && typeof subscribeToChat === 'function') {
         subscribeToChat();
     }
 
-    // Subscribe to user status/role changes if necessary for admin panel or other features
-    // The actual listener setup will be in admin.js or user management modules
-    // Example: subscribeToUserUpdates(); // Function to be defined elsewhere
+    // Admin specific listeners might also be needed (e.g., user status changes)
+    // if (isAdmin() && typeof subscribeToAdminUpdates === 'function') {
+    //     subscribeToAdminUpdates();
+    // }
 }
 
 
-// ---- Make core functions globally accessible if needed, or use exports ----
-// export { initializeApp, fetchCurrentUser, logoutUser, renderCurrentView }; // For module usage
-// Making globally accessible for simplicity with CDN setup
+// ---- Main Initialization Entry Point ----
+// Call initializeApp() once the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});
+
+
+// ---- Make Core Functions Globally Accessible ----
+// Exporting or making globally accessible for modules to call
 window.initializeApp = initializeApp;
 window.fetchCurrentUser = fetchCurrentUser;
 window.logoutUser = logoutUser;
 window.renderCurrentView = renderCurrentView;
-window.isAdmin = () => isAdmin; // Getter for admin status
-
-
-// ---- Ensure initialization happens after DOM is ready ----
-// Call initializeApp() once the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
-});
+window.isAdmin = isAdmin; // Getter for admin status
+window.showModal = showModal; // To show modals from other modules
+window.hideModal = hideModal; // To hide modals from other modules
+window.showLoader = showLoader;
+window.hideLoader = hideLoader;
